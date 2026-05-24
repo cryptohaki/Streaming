@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stream EQ Overlay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Chakra Petch', sans-serif;
+    color: #A6F700;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+    padding: 24px;
+  }
+
+  #overlay.top { align-items: flex-start; }
+  #overlay.center { align-items: center; }
+
+  .eq-grid {
+    width: 100%;
+    max-width: 1100px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .eq-grid.single { grid-template-columns: 1fr; max-width: 600px; }
+  .eq-grid.stacked { grid-template-columns: 1fr; max-width: 700px; }
+
+  .eq-channel {
+    background: rgba(10, 10, 10, 0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(166, 247, 0, 0.28);
+    clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+    padding: 14px 18px 12px;
+    position: relative;
+    pointer-events: auto;
+  }
+
+  .eq-channel[data-hidden="true"] { display: none; }
+
+  .eq-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+  }
+
+  .eq-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #A6F700;
+  }
+
+  .eq-label .dot {
+    width: 7px;
+    height: 7px;
+    background: #A6F700;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #A6F700;
+    transition: all 0.15s ease;
+  }
+
+  .eq-channel.silent .eq-label .dot {
+    background: #2a2a2a;
+    box-shadow: none;
+  }
+
+  .eq-channel.silent .eq-label {
+    color: rgba(166, 247, 0, 0.4);
+  }
+
+  .eq-meter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(166, 247, 0, 0.55);
+    letter-spacing: 0.5px;
+  }
+
+  canvas.bars {
+    display: block;
+    width: 100%;
+    height: 84px;
+  }
+
+  /* SETTINGS BUTTON --- only visible on hover, hidden during stream */
+  #settings-btn {
+    position: fixed;
+    bottom: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    background: rgba(10, 10, 10, 0.7);
+    border: 1px solid rgba(166, 247, 0, 0.3);
+    color: #A6F700;
+    pointer-events: auto;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  }
+
+  body:hover #settings-btn { opacity: 0.6; }
+  #settings-btn:hover { opacity: 1 !important; }
+
+  /* SETTINGS PANEL */
+  #settings {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(10, 10, 10, 0.96);
+    border: 1px solid rgba(166, 247, 0, 0.45);
+    padding: 24px;
+    width: 420px;
+    max-width: 90vw;
+    pointer-events: auto;
+    display: none;
+    clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+    z-index: 100;
+  }
+
+  #settings.open { display: block; }
+
+  #settings h2 {
+    font-size: 14px;
+    letter-spacing: 3px;
+    margin-bottom: 4px;
+    color: #A6F700;
+    font-weight: 700;
+  }
+
+  #settings .sub {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(166, 247, 0, 0.5);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 12px;
+  }
+
+  .field label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: rgba(166, 247, 0, 0.6);
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .field select, .field input[type="text"], .field input[type="color"] {
+    background: rgba(166, 247, 0, 0.04);
+    border: 1px solid rgba(166, 247, 0, 0.25);
+    color: #A6F700;
+    padding: 9px 11px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    width: 100%;
+    outline: none;
+  }
+
+  .field select:focus, .field input:focus {
+    border-color: #A6F700;
+  }
+
+  .field input[type="color"] {
+    padding: 4px;
+    height: 36px;
+    cursor: pointer;
+  }
+
+  .btn {
+    background: rgba(166, 247, 0, 0.08);
+    border: 1px solid rgba(166, 247, 0, 0.5);
+    color: #A6F700;
+    padding: 9px 14px;
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    font-size: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.15s;
+  }
+
+  .btn:hover { background: rgba(166, 247, 0, 0.18); }
+  .btn:active { transform: translateY(1px); }
+
+  .btn.primary {
+    background: #A6F700;
+    color: #0A0A0A;
+    border-color: #A6F700;
+  }
+  .btn.primary:hover { background: #b8ff1a; }
+
+  .btn.secondary {
+    background: transparent;
+    border-color: rgba(166, 247, 0, 0.25);
+    color: rgba(166, 247, 0, 0.7);
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .btn-row .btn { flex: 1; }
+
+  .toggle-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .toggle-row .btn { flex: 1; padding: 8px; }
+  .toggle-row .btn.active {
+    background: #A6F700;
+    color: #0A0A0A;
+  }
+
+  /* PERMISSION GATE */
+  #gate {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    z-index: 200;
+  }
+  #gate.hidden { display: none; }
+
+  .gate-card {
+    background: rgba(10, 10, 10, 0.98);
+    border: 1px solid rgba(166, 247, 0, 0.45);
+    padding: 32px 36px;
+    text-align: center;
+    max-width: 440px;
+    clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+  }
+
+  .gate-card h1 {
+    font-size: 18px;
+    letter-spacing: 4px;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .gate-card .tag {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(166, 247, 0, 0.5);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+  .gate-card p {
+    font-size: 12px;
+    color: rgba(166, 247, 0, 0.75);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  /* TEST MODE INDICATOR */
+  #test-badge {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    background: rgba(166, 247, 0, 0.15);
+    border: 1px solid rgba(166, 247, 0, 0.5);
+    color: #A6F700;
+    padding: 4px 10px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    pointer-events: none;
+    display: none;
+  }
+  #test-badge.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <div class="eq-grid" id="eq-grid">
+
+    <div class="eq-channel silent" id="ch-music">
+      <div class="eq-head">
+        <div class="eq-label"><span class="dot"></span><span>MUSIC</span></div>
+        <div class="eq-meter" id="meter-music">-- dB</div>
+      </div>
+      <canvas class="bars" id="canvas-music"></canvas>
+    </div>
+
+    <div class="eq-channel silent" id="ch-mic">
+      <div class="eq-head">
+        <div class="eq-label"><span class="dot"></span><span>MIC</span></div>
+        <div class="eq-meter" id="meter-mic">-- dB</div>
+      </div>
+      <canvas class="bars" id="canvas-mic"></canvas>
+    </div>
+
+  </div>
+</div>
+
+<div id="test-badge">TEST MODE</div>
+
+<button id="settings-btn" title="Settings (S)">⚙</button>
+
+<div id="gate">
+  <div class="gate-card">
+    <h1>STREAM EQ</h1>
+    <div class="tag">Mic + Music Visualizer</div>
+    <p>Grant microphone access to enable the visualizer. Then pick your sources.</p>
+    <div class="btn-row">
+      <button class="btn secondary" id="test-btn">PREVIEW</button>
+      <button class="btn primary" id="start-btn">START</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings">
+  <h2>SETTINGS</h2>
+  <div class="sub">Press S to toggle · Saved locally</div>
+
+  <div class="field">
+    <label>Microphone</label>
+    <select id="sel-mic"></select>
+  </div>
+
+  <div class="field">
+    <label>Music Source</label>
+    <div class="field-row">
+      <select id="sel-music"></select>
+      <button class="btn" id="share-tab" title="Share a browser tab or window with audio">TAB</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Layout</label>
+    <div class="toggle-row">
+      <button class="btn" data-layout="side">SIDE BY SIDE</button>
+      <button class="btn" data-layout="stacked">STACKED</button>
+      <button class="btn" data-layout="single-mic">MIC ONLY</button>
+      <button class="btn" data-layout="single-music">MUSIC ONLY</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Position</label>
+    <div class="toggle-row">
+      <button class="btn" data-position="top">TOP</button>
+      <button class="btn" data-position="center">CENTER</button>
+      <button class="btn" data-position="bottom">BOTTOM</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Accent Color</label>
+    <input type="color" id="color" value="#A6F700">
+  </div>
+
+  <div class="btn-row">
+    <button class="btn secondary" id="close-settings">CLOSE</button>
+    <button class="btn primary" id="apply">APPLY</button>
+  </div>
+</div>
+
+<script>
+  // ==========================================================================
+  // CONFIG (URL params override defaults, localStorage overrides those)
+  // ==========================================================================
+  const url = new URLSearchParams(location.search);
+  const ls = (k, d) => localStorage.getItem('eq:' + k) ?? d;
+  const lsSet = (k, v) => localStorage.setItem('eq:' + k, v);
+
+  const config = {
+    color: url.get('color') ? '#' + url.get('color').replace('#', '') : ls('color', '#A6F700'),
+    layout: url.get('layout') || ls('layout', 'side'),
+    position: url.get('position') || ls('position', 'bottom'),
+    barCount: parseInt(url.get('bars')) || 36,
+    smoothing: 0.78,
+    activeThreshold: 0.025,
+  };
+
+  const test = url.get('test') === '1';
+
+  // ==========================================================================
+  // DOM
+  // ==========================================================================
+  const $ = id => document.getElementById(id);
+  const els = {
+    overlay: $('overlay'),
+    grid: $('eq-grid'),
+    gate: $('gate'),
+    settings: $('settings'),
+    settingsBtn: $('settings-btn'),
+    testBadge: $('test-badge'),
+    startBtn: $('start-btn'),
+    testBtn: $('test-btn'),
+    closeBtn: $('close-settings'),
+    applyBtn: $('apply'),
+    shareTab: $('share-tab'),
+    selMic: $('sel-mic'),
+    selMusic: $('sel-music'),
+    color: $('color'),
+    chMic: $('ch-mic'),
+    chMusic: $('ch-music'),
+    canvasMic: $('canvas-mic'),
+    canvasMusic: $('canvas-music'),
+    meterMic: $('meter-mic'),
+    meterMusic: $('meter-music'),
+  };
+
+  // ==========================================================================
+  // AUDIO STATE
+  // ==========================================================================
+  let audioCtx = null;
+  const channels = {
+    mic: makeChannel(),
+    music: makeChannel(),
+  };
+
+  function makeChannel() {
+    return {
+      analyser: null,
+      data: null,
+      stream: null,
+      source: null,
+      peaks: new Array(config.barCount).fill(0),
+      avgLevel: 0,
+      testMode: false,
+      testPhase: Math.random() * 100,
+    };
+  }
+
+  function ensureCtx() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function attachStream(name, stream) {
+    ensureCtx();
+    const ch = channels[name];
+    if (ch.source) try { ch.source.disconnect(); } catch (e) {}
+    if (ch.stream) ch.stream.getTracks().forEach(t => t.stop());
+
+    ch.stream = stream;
+    ch.source = audioCtx.createMediaStreamSource(stream);
+    ch.analyser = audioCtx.createAnalyser();
+    ch.analyser.fftSize = 256;
+    ch.analyser.smoothingTimeConstant = config.smoothing;
+    ch.source.connect(ch.analyser);
+    ch.data = new Uint8Array(ch.analyser.frequencyBinCount);
+    ch.peaks = new Array(config.barCount).fill(0);
+    ch.testMode = false;
+  }
+
+  function clearChannel(name) {
+    const ch = channels[name];
+    if (ch.source) try { ch.source.disconnect(); } catch (e) {}
+    if (ch.stream) ch.stream.getTracks().forEach(t => t.stop());
+    ch.source = null;
+    ch.stream = null;
+    ch.analyser = null;
+    ch.data = null;
+  }
+
+  // ==========================================================================
+  // DEVICE ENUMERATION
+  // ==========================================================================
+  async function loadDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+
+      [els.selMic, els.selMusic].forEach(sel => {
+        const current = sel.value;
+        sel.innerHTML = '<option value="">— None —</option>';
+        inputs.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || 'Device ' + d.deviceId.slice(0, 8);
+          sel.appendChild(opt);
+        });
+        sel.value = current;
+      });
+
+      const savedMic = ls('dev-mic', '');
+      const savedMusic = ls('dev-music', '');
+      if (savedMic && [...els.selMic.options].some(o => o.value === savedMic)) {
+        els.selMic.value = savedMic;
+      }
+      if (savedMusic && [...els.selMusic.options].some(o => o.value === savedMusic)) {
+        els.selMusic.value = savedMusic;
+      }
+    } catch (e) {
+      console.error('Device enumeration failed:', e);
+    }
+  }
+
+  // ==========================================================================
+  // STREAM ACQUISITION
+  // ==========================================================================
+  async function useDevice(name, deviceId) {
+    if (!deviceId) { clearChannel(name); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: deviceId },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        }
+      });
+      attachStream(name, stream);
+    } catch (e) {
+      console.error('useDevice failed for', name, e);
+    }
+  }
+
+  async function useTabAudio() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+      // Strip video tracks, keep audio only
+      stream.getVideoTracks().forEach(t => t.stop());
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        alert('No audio in shared source. Make sure to check "Share audio" when picking a tab.');
+        return;
+      }
+      const audioStream = new MediaStream(audioTracks);
+      attachStream('music', audioStream);
+      els.selMusic.value = '';
+      lsSet('dev-music', '');
+    } catch (e) {
+      console.error('Tab share failed:', e);
+    }
+  }
+
+  // ==========================================================================
+  // RENDER LOOP
+  // ==========================================================================
+  function fillTestData(ch) {
+    if (!ch.data) ch.data = new Uint8Array(128);
+    ch.testPhase += 0.04;
+    for (let i = 0; i < ch.data.length; i++) {
+      const base = Math.sin(ch.testPhase + i * 0.15) * 0.5 + 0.5;
+      const noise = Math.random() * 0.3;
+      const falloff = Math.pow(1 - i / ch.data.length, 1.2);
+      ch.data[i] = Math.floor((base * 0.7 + noise) * falloff * 230);
+    }
+  }
+
+  function drawChannel(canvas, ch, channelEl, meterEl) {
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth;
+    const cssH = canvas.clientHeight;
+    if (canvas.width !== Math.floor(cssW * dpr) || canvas.height !== Math.floor(cssH * dpr)) {
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const barCount = config.barCount;
+    const gap = 2;
+    const bw = (cssW - gap * (barCount - 1)) / barCount;
+
+    // Idle state
+    if (!ch.analyser && !ch.testMode) {
+      ctx.fillStyle = config.color;
+      ctx.globalAlpha = 0.1;
+      for (let i = 0; i < barCount; i++) {
+        ctx.fillRect(i * (bw + gap), cssH - 2, bw, 2);
+      }
+      ctx.globalAlpha = 1;
+      channelEl.classList.add('silent');
+      meterEl.textContent = '-- dB';
+      return;
+    }
+
+    if (ch.testMode) {
+      fillTestData(ch);
+    } else {
+      ch.analyser.getByteFrequencyData(ch.data);
+    }
+
+    const binsPerBar = Math.max(1, Math.floor(ch.data.length / barCount));
+    let total = 0;
+
+    for (let i = 0; i < barCount; i++) {
+      let sum = 0;
+      for (let j = 0; j < binsPerBar; j++) {
+        sum += ch.data[i * binsPerBar + j] || 0;
+      }
+      const avg = sum / binsPerBar;
+      total += avg;
+      const norm = avg / 255;
+      const bh = Math.max(2, norm * cssH);
+
+      ch.peaks[i] = Math.max(ch.peaks[i] * 0.94, bh);
+
+      const x = i * (bw + gap);
+      const y = cssH - bh;
+
+      ctx.fillStyle = config.color;
+      ctx.fillRect(x, y, bw, bh);
+
+      if (ch.peaks[i] > 5) {
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(x, cssH - ch.peaks[i] - 2, bw, 2);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    const avgLevel = total / barCount / 255;
+    ch.avgLevel = avgLevel;
+
+    if (avgLevel > config.activeThreshold) {
+      channelEl.classList.remove('silent');
+    } else {
+      channelEl.classList.add('silent');
+    }
+
+    const db = avgLevel > 0.001 ? Math.round(20 * Math.log10(avgLevel)) : -99;
+    meterEl.textContent = db <= -60 ? '-- dB' : db + ' dB';
+  }
+
+  function frame() {
+    drawChannel(els.canvasMic, channels.mic, els.chMic, els.meterMic);
+    drawChannel(els.canvasMusic, channels.music, els.chMusic, els.meterMusic);
+    requestAnimationFrame(frame);
+  }
+
+  // ==========================================================================
+  // LAYOUT APPLICATION
+  // ==========================================================================
+  function applyLayout() {
+    els.grid.classList.remove('single', 'stacked');
+    els.chMic.dataset.hidden = 'false';
+    els.chMusic.dataset.hidden = 'false';
+
+    if (config.layout === 'stacked') {
+      els.grid.classList.add('stacked');
+    } else if (config.layout === 'single-mic') {
+      els.grid.classList.add('single');
+      els.chMusic.dataset.hidden = 'true';
+    } else if (config.layout === 'single-music') {
+      els.grid.classList.add('single');
+      els.chMic.dataset.hidden = 'true';
+    }
+
+    els.overlay.classList.remove('top', 'center');
+    if (config.position === 'top') els.overlay.classList.add('top');
+    if (config.position === 'center') els.overlay.classList.add('center');
+
+    // Sync button active states
+    document.querySelectorAll('[data-layout]').forEach(b => {
+      b.classList.toggle('active', b.dataset.layout === config.layout);
+    });
+    document.querySelectorAll('[data-position]').forEach(b => {
+      b.classList.toggle('active', b.dataset.position === config.position);
+    });
+
+    els.color.value = config.color;
+  }
+
+  // ==========================================================================
+  // EVENT HANDLERS
+  // ==========================================================================
+  els.startBtn.addEventListener('click', async () => {
+    try {
+      // Prime permission so device labels populate
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probe.getTracks().forEach(t => t.stop());
+      await loadDevices();
+      els.gate.classList.add('hidden');
+      els.settings.classList.add('open');
+    } catch (e) {
+      alert('Microphone permission denied. Allow it and reload, or click PREVIEW to see the overlay style without audio.');
+    }
+  });
+
+  els.testBtn.addEventListener('click', () => {
+    channels.mic.testMode = true;
+    channels.music.testMode = true;
+    if (!channels.mic.data) channels.mic.data = new Uint8Array(128);
+    if (!channels.music.data) channels.music.data = new Uint8Array(128);
+    channels.mic.peaks = new Array(config.barCount).fill(0);
+    channels.music.peaks = new Array(config.barCount).fill(0);
+    els.testBadge.classList.add('show');
+    els.gate.classList.add('hidden');
+  });
+
+  els.applyBtn.addEventListener('click', async () => {
+    const micId = els.selMic.value;
+    const musicId = els.selMusic.value;
+    config.color = els.color.value;
+
+    lsSet('color', config.color);
+    lsSet('layout', config.layout);
+    lsSet('position', config.position);
+    lsSet('dev-mic', micId);
+    if (musicId) lsSet('dev-music', musicId);
+
+    await useDevice('mic', micId);
+    if (musicId) await useDevice('music', musicId);
+
+    applyLayout();
+    els.settings.classList.remove('open');
+  });
+
+  els.closeBtn.addEventListener('click', () => {
+    els.settings.classList.remove('open');
+  });
+
+  els.settingsBtn.addEventListener('click', () => {
+    els.settings.classList.toggle('open');
+    if (els.settings.classList.contains('open')) loadDevices();
+  });
+
+  els.shareTab.addEventListener('click', useTabAudio);
+
+  document.querySelectorAll('[data-layout]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      config.layout = btn.dataset.layout;
+      document.querySelectorAll('[data-layout]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.querySelectorAll('[data-position]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      config.position = btn.dataset.position;
+      document.querySelectorAll('[data-position]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 's' || e.key === 'S') {
+      // Ignore if typing in an input
+      if (document.activeElement && /input|select|textarea/i.test(document.activeElement.tagName)) return;
+      els.settings.classList.toggle('open');
+      if (els.settings.classList.contains('open')) loadDevices();
+    }
+    if (e.key === 'Escape') {
+      els.settings.classList.remove('open');
+    }
+  });
+
+  // ==========================================================================
+  // BOOT
+  // ==========================================================================
+  applyLayout();
+  frame();
+
+  if (test) {
+    els.testBtn.click();
+  } else if (url.get('auto') === '1') {
+    // Try to auto-start if URL says so (OBS browser sources can be configured to allow)
+    els.startBtn.click();
+  }
+</script>
+
+</body>
+</html>
