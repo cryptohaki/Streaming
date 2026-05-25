@@ -32,6 +32,8 @@
 
   #overlay.top { align-items: flex-start; }
   #overlay.center { align-items: center; }
+  #overlay.left { justify-content: flex-start; }
+  #overlay.right { justify-content: flex-end; }
 
   .eq-grid {
     width: 100%;
@@ -411,12 +413,26 @@
   </div>
 
   <div class="field">
-    <label>Position</label>
+    <label>Position (Vertical)</label>
     <div class="toggle-row">
       <button class="btn" data-position="top">TOP</button>
       <button class="btn" data-position="center">CENTER</button>
       <button class="btn" data-position="bottom">BOTTOM</button>
     </div>
+  </div>
+
+  <div class="field">
+    <label>Align (Horizontal)</label>
+    <div class="toggle-row">
+      <button class="btn" data-align="left">LEFT</button>
+      <button class="btn" data-align="center">CENTER</button>
+      <button class="btn" data-align="right">RIGHT</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Max Width (px, blank = auto)</label>
+    <input type="text" id="width-input" placeholder="e.g. 400" inputmode="numeric">
   </div>
 
   <div class="field">
@@ -442,6 +458,8 @@
     color: url.get('color') ? '#' + url.get('color').replace('#', '') : ls('color', '#A6F700'),
     layout: url.get('layout') || ls('layout', 'side'),
     position: url.get('position') || ls('position', 'bottom'),
+    align: url.get('align') || ls('align', 'center'),
+    width: parseInt(url.get('width')) || parseInt(ls('width', '')) || null,
     barCount: parseInt(url.get('bars')) || 36,
     smoothing: 0.78,
     activeThreshold: 0.025,
@@ -468,6 +486,7 @@
     selMic: $('sel-mic'),
     selMusic: $('sel-music'),
     color: $('color'),
+    widthInput: $('width-input'),
     chMic: $('ch-mic'),
     chMusic: $('ch-music'),
     canvasMic: $('canvas-mic'),
@@ -725,6 +744,16 @@
     if (config.position === 'top') els.overlay.classList.add('top');
     if (config.position === 'center') els.overlay.classList.add('center');
 
+    els.overlay.classList.remove('left', 'right');
+    if (config.align === 'left') els.overlay.classList.add('left');
+    if (config.align === 'right') els.overlay.classList.add('right');
+
+    if (config.width) {
+      els.grid.style.maxWidth = config.width + 'px';
+    } else {
+      els.grid.style.maxWidth = '';
+    }
+
     // Sync button active states
     document.querySelectorAll('[data-layout]').forEach(b => {
       b.classList.toggle('active', b.dataset.layout === config.layout);
@@ -732,8 +761,12 @@
     document.querySelectorAll('[data-position]').forEach(b => {
       b.classList.toggle('active', b.dataset.position === config.position);
     });
+    document.querySelectorAll('[data-align]').forEach(b => {
+      b.classList.toggle('active', b.dataset.align === config.align);
+    });
 
     els.color.value = config.color;
+    els.widthInput.value = config.width || '';
   }
 
   // ==========================================================================
@@ -767,10 +800,14 @@
     const micId = els.selMic.value;
     const musicId = els.selMusic.value;
     config.color = els.color.value;
+    const widthVal = parseInt(els.widthInput.value);
+    config.width = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : null;
 
     lsSet('color', config.color);
     lsSet('layout', config.layout);
     lsSet('position', config.position);
+    lsSet('align', config.align);
+    lsSet('width', config.width || '');
     lsSet('dev-mic', micId);
     if (musicId) lsSet('dev-music', musicId);
 
@@ -803,6 +840,13 @@
     btn.addEventListener('click', () => {
       config.position = btn.dataset.position;
       document.querySelectorAll('[data-position]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.querySelectorAll('[data-align]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      config.align = btn.dataset.align;
+      document.querySelectorAll('[data-align]').forEach(b => b.classList.toggle('active', b === btn));
     });
   });
 
