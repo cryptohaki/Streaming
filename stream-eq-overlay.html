@@ -556,16 +556,33 @@
   // ==========================================================================
   async function loadDevices() {
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = devices.filter(d => d.kind === 'audioinput');
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      let inputs = devices.filter(d => d.kind === 'audioinput');
+
+      // Device labels are hidden until mic permission is granted.
+      // If any label is empty, probe getUserMedia to unlock labels, then re-enumerate.
+      if (inputs.length > 0 && !inputs.some(d => d.label)) {
+        try {
+          const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+          probe.getTracks().forEach(t => t.stop());
+          devices = await navigator.mediaDevices.enumerateDevices();
+          inputs = devices.filter(d => d.kind === 'audioinput');
+        } catch (e) {
+          console.warn('Mic permission probe failed — device names will be hidden:', e);
+        }
+      }
 
       [els.selMic, els.selMusic].forEach(sel => {
         const current = sel.value;
-        sel.innerHTML = '<option value="">— None —</option>';
+        while (sel.firstChild) sel.removeChild(sel.firstChild);
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = '— None —';
+        sel.appendChild(none);
         inputs.forEach(d => {
           const opt = document.createElement('option');
           opt.value = d.deviceId;
-          opt.textContent = d.label || 'Device ' + d.deviceId.slice(0, 8);
+          opt.textContent = d.label || '(grant mic to see name · ' + d.deviceId.slice(0, 6) + ')';
           sel.appendChild(opt);
         });
         sel.value = current;
