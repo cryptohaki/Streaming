@@ -198,6 +198,35 @@
     border-color: #A6F700;
   }
 
+  .field select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, #A6F700 50%),
+      linear-gradient(135deg, #A6F700 50%, transparent 50%);
+    background-position:
+      calc(100% - 14px) 50%,
+      calc(100% - 9px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 28px;
+    cursor: pointer;
+  }
+
+  .field select option {
+    background: #0A0A0A;
+    color: #A6F700;
+    padding: 6px 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .field select option:checked,
+  .field select option:hover {
+    background: #A6F700 linear-gradient(0deg, #A6F700, #A6F700);
+    color: #0A0A0A;
+  }
+
   .field input[type="color"] {
     padding: 4px;
     height: 36px;
