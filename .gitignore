@@ -1,3 +1,8 @@
 GUNZscope-Streaming/
 chat-roster/
 *.zip
+GUNZscope-Streaming*/
+_kept/
+_superseded/
+_test-cache/
+_test-tmp/
